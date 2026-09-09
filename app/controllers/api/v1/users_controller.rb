@@ -6,7 +6,7 @@ class Api::V1::UsersController < Api::BaseController
   before_action :check_authorization
   before_action :fetch_user, except: [:create, :index, :bulk_create]
   # Rank guards run after fetch_user (update needs the target to tell a grant
-  # from a resubmit) and before any write (CRM-524).
+  # from a resubmit) and before any write.
   before_action :authorize_role_grant, only: %i[create update bulk_create]
   before_action :authorize_target_rank, only: %i[update destroy]
 
@@ -72,7 +72,8 @@ class Api::V1::UsersController < Api::BaseController
   end
 
   def destroy
-    if @user.id == current_user.id
+    # A service token carries no user, so there is no self to protect.
+    if current_user && @user.id == current_user.id
       return error_response('SELF_DELETION', 'You cannot delete your own account', status: :unprocessable_entity)
     end
 

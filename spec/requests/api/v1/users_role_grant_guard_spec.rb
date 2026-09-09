@@ -2,9 +2,9 @@
 
 require 'rails_helper'
 
-# CRM-524 — users.manage lets a caller administer agents, not mint or unseat
-# the installation owner. Granting super_admin, and demoting or deleting one,
-# takes a super_admin; a service token carries no user and never qualifies.
+# users.manage administers agents, not the installation owner: granting,
+# demoting or deleting a super_admin takes a super_admin; a service token
+# carries no user and never qualifies.
 RSpec.describe 'Users role-grant guard (super_admin rank)', type: :request do
   before { load Rails.root.join('db/seeds/rbac.rb') }
 
@@ -142,6 +142,15 @@ RSpec.describe 'Users role-grant guard (super_admin rank)', type: :request do
 
       expect(response).to have_http_status(:forbidden)
       expect(User.exists?(super_admin.id)).to be(true)
+    end
+
+    it 'still deletes an agent (no current_user to self-check against)' do
+      with_service_token do
+        delete "/api/v1/users/#{target.id}", headers: service_headers, as: :json
+      end
+
+      expect(response).to have_http_status(:ok)
+      expect(User.exists?(target.id)).to be(false)
     end
   end
 
