@@ -134,6 +134,15 @@ RSpec.describe 'Users role-grant guard (super_admin rank)', type: :request do
       expect(response).to have_http_status(:forbidden)
       expect(role_keys_of(super_admin)).to eq(%w[super_admin])
     end
+
+    it 'cannot delete a super_admin' do
+      with_service_token do
+        delete "/api/v1/users/#{super_admin.id}", headers: service_headers, as: :json
+      end
+
+      expect(response).to have_http_status(:forbidden)
+      expect(User.exists?(super_admin.id)).to be(true)
+    end
   end
 
   describe 'a super_admin as the target' do
