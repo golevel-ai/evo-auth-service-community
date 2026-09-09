@@ -5,6 +5,10 @@ class Api::V1::UsersController < Api::BaseController
   # without users.read.
   before_action :check_authorization
   before_action :fetch_user, except: [:create, :index, :bulk_create]
+  # Rank guards run after fetch_user (update needs the target to tell a grant
+  # from a resubmit) and before any write (CRM-524).
+  before_action :authorize_role_grant, only: %i[create update bulk_create]
+  before_action :authorize_target_rank, only: %i[update destroy]
 
   def index
     @users = Users::FilterService.new(params[:filters], params[:q], params[:sort], params[:order],
@@ -198,7 +202,42 @@ class Api::V1::UsersController < Api::BaseController
     target_super_admin = @user.roles.exists?(key: 'super_admin')
     return false unless target_super_admin
 
-    !current_user.roles.exists?(key: 'super_admin')
+    !caller_super_admin?
+  end
+
+  # A service token carries no user, so it never holds the rank.
+  def caller_super_admin?
+    current_user.present? && current_user.roles.exists?(key: 'super_admin')
+  end
+
+  # The submitted role must be one the caller may hand out. Skipped when the
+  # update leaves the role set untouched (the community frontend resubmits the
+  # current role on every edit).
+  def authorize_role_grant
+    role_key = params[:role].to_s
+    return true if role_key.blank?
+    return true if action_name == 'update' && !role_set_change?
+    return true if grantable_role?(role_key)
+
+    error_response('FORBIDDEN', "Role '#{role_key}' cannot be granted by this caller", status: :forbidden)
+  end
+
+  # Demoting or removing a super_admin takes a super_admin, like set_password.
+  def authorize_target_rank
+    return true if action_name == 'update' && (params[:role].blank? || !role_set_change?)
+    return true unless target_outranks_caller?
+
+    error_response('FORBIDDEN', "You cannot change or remove a super_admin's role", status: :forbidden)
+  end
+
+  # Whether the caller may grant `role_key`. The installation owner is minted by
+  # setup, never by delegation: only a super_admin grants super_admin. A
+  # deployment that restricts other keys prepends an override here; nothing
+  # else may widen it.
+  def grantable_role?(role_key)
+    return true unless role_key.to_s == 'super_admin'
+
+    caller_super_admin?
   end
 
   def update_user_role(role_key)
