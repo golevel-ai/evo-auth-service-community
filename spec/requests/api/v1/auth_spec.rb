@@ -74,6 +74,42 @@ RSpec.describe 'POST /api/v1/auth/login — mfa_setup_incomplete bypass (EVO-110
   end
 end
 
+RSpec.describe 'POST /api/v1/auth/logout', type: :request do
+  let(:password) { 'Test123!@' }
+  let(:user) do
+    User.create!(
+      name: 'Logout User',
+      email: "logout-spec-#{SecureRandom.hex(4)}@example.com",
+      password: password,
+      password_confirmation: password,
+      confirmed_at: Time.current
+    )
+  end
+
+  before do
+    allow(Licensing::Runtime).to receive(:context).and_return(
+      instance_double(Licensing::RuntimeContext, active?: true, track_message: nil)
+    )
+    allow(RuntimeConfig).to receive(:account).and_return(nil)
+    Rails.cache.clear
+  end
+
+  it 'invalidates the cached bearer token before revoking it' do
+    post '/api/v1/auth/login', params: { email: user.email, password: password }, headers: { 'Host' => 'localhost' }
+    token = JSON.parse(response.body).dig('data', 'token', 'access_token')
+    headers = { 'Host' => 'localhost', 'Authorization' => "Bearer #{token}" }
+
+    post '/api/v1/auth/validate', headers: headers
+    expect(response).to have_http_status(:ok)
+
+    post '/api/v1/auth/logout', headers: headers
+    expect(response).to have_http_status(:ok)
+
+    post '/api/v1/auth/validate', headers: headers
+    expect(response).to have_http_status(:unauthorized)
+  end
+end
+
 # Regression guard: users with fully-configured MFA must still be challenged.
 # Ensures the mfa_setup_incomplete bypass introduced in EVO-1104 does not
 # accidentally widen to users whose mfa_enabled? returns true.

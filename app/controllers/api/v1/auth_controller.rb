@@ -57,10 +57,12 @@ class Api::V1::AuthController < Api::BaseController
       case token_type
       when 'bearer'
         if @doorkeeper_token
+          TokenValidationService.invalidate_cache_for_token(@doorkeeper_token.token)
           @doorkeeper_token.revoke
         end
       when 'api_access_token'
         if @access_token
+          TokenValidationService.invalidate_cache_for_token(@access_token.token)
           @access_token.destroy
         end
       end
