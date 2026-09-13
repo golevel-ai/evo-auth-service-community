@@ -94,7 +94,7 @@ RSpec.describe 'POST /api/v1/auth/logout', type: :request do
     Rails.cache.clear
   end
 
-  it 'invalidates the cached bearer token before revoking it' do
+  it 'rejects the revoked bearer token after invalidating its cache' do
     post '/api/v1/auth/login', params: { email: user.email, password: password }, headers: { 'Host' => 'localhost' }
     token = JSON.parse(response.body).dig('data', 'token', 'access_token')
     headers = { 'Host' => 'localhost', 'Authorization' => "Bearer #{token}" }
